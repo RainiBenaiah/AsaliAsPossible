@@ -1,0 +1,29 @@
+# Query: from utils.auth_dev_mode import get_user_or_dev
+# ContextLines: 1
+
+5 results - 5 files
+
+routes\analytics.py:
+  2  from typing import Annotated
+  3: from utils.auth_utils import get_current_user_email # ✅ CHANGED
+  4  from services.hive_service import HiveService
+
+routes\dashboard.py:
+  2  from typing import Annotated
+  3: from utils.auth_utils import get_current_user_email  # ✅ CHANGED
+  4  from services.hive_service import HiveService
+
+routes\harvests.py:
+  2  from typing import Annotated, List
+  3: from utils.auth_utils import get_current_user_email # ✅ CHANGED
+  4  from services.hive_service import HiveService
+
+routes\recommendations.py:
+  2  from typing import Annotated, List, Optional
+  3: from utils.auth_utils import get_current_user_email  # ✅ CHANGED
+  4  from services.hive_service import HiveService
+
+routes\settings.py:
+  2  from typing import Annotated
+  3: from utils.auth_utils import get_current_user_email  # ✅ CHANGED
+  4  from models.settings import UserSettings, SettingsUpdate
