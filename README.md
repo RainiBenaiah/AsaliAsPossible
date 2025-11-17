@@ -5,7 +5,7 @@ An intelligent reinforcement learning framework for autonomous beehive managemen
 
 ## Project Documentation
 
-You can access the full file here:
+You can access the Full Video file here:
 
  [Click to open Drive File](https://drive.google.com/file/d/1wdo2T2OF1RMT0yb9hE8LMkoJHRzFofu7/view?usp=sharing)
 
