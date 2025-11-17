@@ -3,6 +3,13 @@
 
 An intelligent reinforcement learning framework for autonomous beehive management in Rwanda, integrating IoT sensors, machine learning models, and a mobile application to optimize honey production and colony health.
 
+## Project Documentation
+
+You can access the full file here:
+
+ [Click to open Drive File](https://drive.google.com/file/d/1wdo2T2OF1RMT0yb9hE8LMkoJHRzFofu7/view?usp=sharing)
+
+
 ## Overview
 
 AsaliAsPossible is a comprehensive beehive monitoring system that combines multiple machine learning models to provide real-time insights and automated recommendations for beekeepers. The system analyzes audio data, sensor readings, and historical patterns to make intelligent decisions about hive management.
