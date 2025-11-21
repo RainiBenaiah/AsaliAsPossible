@@ -1,4 +1,3 @@
-sudo apt get update
-sudo apt install -y build-essential
-
+#!/usr/bin/env bash
+pip install --upgrade pip
 pip install -r requirements.txt
