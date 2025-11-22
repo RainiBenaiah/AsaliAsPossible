@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
@@ -13,6 +14,29 @@ from services.audio_service import get_audio_service
 from services.forecasting_service import get_forecasting_service
 from services.rl_service import get_rl_service
 
+async def load_models_async():
+    """Load ML models in background after server starts"""
+    await asyncio.sleep(2)  # Let server start first
+    
+    print("\n Loading ML Models...")
+    try:
+        get_audio_service()
+        print(" Audio model loaded")
+    except Exception as e:
+        print(f" Audio: {e}")
+    
+    try:
+        get_forecasting_service()
+        print(" LSTM model loaded")
+    except Exception as e:
+        print(f" LSTM: {e}")
+    
+    try:
+        get_rl_service()
+        print(" PPO model loaded")
+    except Exception as e:
+        print(f" PPO: {e}")
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,49 +48,18 @@ async def lifespan(app: FastAPI):
     # Connect to database
     await connect_to_mongo()
     
-    # Initialize database indexes (NEW)
+    # Initialize database indexes
     try:
         print("\n Initializing database indexes...")
         await init_indexes()
-        print("    Database indexes created")
+        print(" Database indexes created")
     except Exception as e:
-        print(f"    Index creation warning: {e}")
-        print("   (This is normal if indexes already exist)")
+        print(f"⚠ Index warning: {e}")
     
-    # Load ML models
-    print("\n Loading ML Models...")
-    try:
-        audio_service = get_audio_service()
-        if not audio_service.mock_mode:
-            print("    Audio classification model loaded (REAL MODEL)")
-        else:
-            print("    Audio service in MOCK mode")
-    except Exception as e:
-        print(f"    Audio model failed: {e}")
+    print("\n API Ready - ML models loading in background...")
     
-    try:
-        forecasting_service = get_forecasting_service()
-        print("    LSTM forecasting model loaded")
-    except Exception as e:
-        print(f"    LSTM model failed: {e}")
-    
-    try:
-        rl_service = get_rl_service()
-        print("    PPO RL model loaded")
-    except Exception as e:
-        print(f"    PPO model failed: {e}")
-    
-    print("\n" + "=" * 60)
-    print("  AsaliAsPossible API Ready!")
-    print("=" * 60)
-    print(f"  API Docs:    http://localhost:8000/docs")
-    print(f"  Auth:        http://localhost:8000/api/auth/login")
-    print(f"   Health:      http://localhost:8000/api/health")
-    print(f"  Hives:       http://localhost:8000/api/hives")
-    print("=" * 60)
-    print(f"  Database:    {settings.DATABASE_NAME}")
-    print(f"  Collections: users, hives, audio_metadata, forecasts, rl_training_data")
-    print("=" * 60 + "\n")
+    # Load models in background AFTER server starts
+    asyncio.create_task(load_models_async())
     
     yield
     
