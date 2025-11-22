@@ -10,15 +10,19 @@ from config.settings import settings
 from database.connection import connect_to_mongo, close_mongo_connection, init_indexes 
 from routes import auth, dashboard, hives, analytics, recommendations, harvests
 from routes import settings as settings_route
-from services.audio_service import get_audio_service
-from services.forecasting_service import get_forecasting_service
-from services.rl_service import get_rl_service
+
 
 async def load_models_async():
     """Load ML models in background after server starts"""
     await asyncio.sleep(2)  # Let server start first
     
     print("\n Loading ML Models...")
+
+    # Import services ONLY when needed
+    from services.audio_service import get_audio_service
+    from services.forecasting_service import get_forecasting_service
+    from services.rl_service import get_rl_service
+    
     try:
         get_audio_service()
         print(" Audio model loaded")
