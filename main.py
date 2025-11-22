@@ -6,10 +6,10 @@ from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
 from fastapi.openapi.models import OAuthFlowPassword
 from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
-from config.settings import settings
+#from config.settings import settings
 from database.connection import connect_to_mongo, close_mongo_connection, init_indexes 
-from routes import auth, dashboard, hives, analytics, recommendations, harvests
-from routes import settings as settings_route
+#from routes import auth, dashboard, hives, analytics, recommendations, harvests
+#from routes import settings as settings_route
 
 
 async def load_models_async():
@@ -118,13 +118,13 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router, prefix=settings.API_V1_STR)
-app.include_router(dashboard.router, prefix=settings.API_V1_STR)
-app.include_router(hives.router, prefix=settings.API_V1_STR)
-app.include_router(analytics.router, prefix=settings.API_V1_STR)
-app.include_router(recommendations.router, prefix=settings.API_V1_STR)
-app.include_router(harvests.router, prefix=settings.API_V1_STR)
-app.include_router(settings_route.router, prefix=settings.API_V1_STR)
+#app.include_router(auth.router, prefix=settings.API_V1_STR)
+#app.include_router(dashboard.router, prefix=settings.API_V1_STR)
+#app.include_router(hives.router, prefix=settings.API_V1_STR)
+#app.include_router(analytics.router, prefix=settings.API_V1_STR)
+#app.include_router(recommendations.router, prefix=settings.API_V1_STR)
+#app.include_router(harvests.router, prefix=settings.API_V1_STR)
+#app.include_router(settings_route.router, prefix=settings.API_V1_STR)
 
 # Root endpoint
 @app.get("/")
