@@ -12,8 +12,9 @@ from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
 from config.settings import settings
 from database.connection import connect_to_mongo, close_mongo_connection, init_indexes 
-from routes import auth, dashboard, hives, analytics, recommendations, harvests
-from routes import settings as settings_route
+# TEMPORARILY DISABLED - Testing if router imports cause crashes
+# from routes import auth, dashboard, hives, analytics, recommendations, harvests
+# from routes import settings as settings_route
 
 # ❌ REMOVED heavy imports - these slow down startup:
 # from services.audio_service import get_audio_service
@@ -117,22 +118,33 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-    openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
-        routes=app.routes,
-    )
-    openapi_schema["components"]["securitySchemes"] = {
-        "BearerAuth": {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
+    
+    try:
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        openapi_schema["components"]["securitySchemes"] = {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
         }
-    }
-    openapi_schema["security"] = [{"BearerAuth": []}]
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
+        openapi_schema["security"] = [{"BearerAuth": []}]
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+    except Exception as e:
+        print(f"⚠️ OpenAPI schema error: {e}")
+        # Return basic schema as fallback
+        return get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
 
 app.openapi = custom_openapi
 
@@ -146,54 +158,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth.router, prefix=settings.API_V1_STR)
-app.include_router(dashboard.router, prefix=settings.API_V1_STR)
-app.include_router(hives.router, prefix=settings.API_V1_STR)
-app.include_router(analytics.router, prefix=settings.API_V1_STR)
-app.include_router(recommendations.router, prefix=settings.API_V1_STR)
-app.include_router(harvests.router, prefix=settings.API_V1_STR)
-app.include_router(settings_route.router, prefix=settings.API_V1_STR)
+# Include routers - TEMPORARILY DISABLED FOR TESTING
+# app.include_router(auth.router, prefix=settings.API_V1_STR)
+# app.include_router(dashboard.router, prefix=settings.API_V1_STR)
+# app.include_router(hives.router, prefix=settings.API_V1_STR)
+# app.include_router(analytics.router, prefix=settings.API_V1_STR)
+# app.include_router(recommendations.router, prefix=settings.API_V1_STR)
+# app.include_router(harvests.router, prefix=settings.API_V1_STR)
+# app.include_router(settings_route.router, prefix=settings.API_V1_STR)
 
 # Root endpoint
 @app.get("/")
 async def root():
-    return {
-        "message": "Welcome to AsaliAsPossible API 🐝",
-        "version": "1.0.0",
-        "status": "running",
-        "docs": "/docs",
-        "health": "/api/health",
-        "ml_models": {
-            "audio": "CNN-LSTM Audio Classifier",
-            "forecasting": "LSTM Time-Series (24h→6h)",
-            "rl": "PPO Reinforcement Learning"
-        },
-        "database": {
-            "name": settings.DATABASE_NAME,
-            "type": "MongoDB Atlas",
-            "collections": [
-                "users", "hives", "hive_history",
-                "audio_metadata", "forecasts", 
-                "rl_training_data", "rl_episodes",
-                "recommendations", "harvests", "settings"
-            ]
+    try:
+        return {
+            "message": "Welcome to AsaliAsPossible API 🐝",
+            "version": "1.0.0",
+            "status": "running",
+            "docs": "/docs",
+            "health": "/api/health"
         }
-    }
+    except Exception as e:
+        print(f"Root endpoint error: {e}")
+        return {"status": "error", "message": str(e)}
 
 # Health check endpoint
-@app.get(f"{settings.API_V1_STR}/health")
+@app.get("/api/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "service": "AsaliAsPossible API",
-        "version": "1.0.0",
-        "ml_models_loaded": True,
-        "database": "MongoDB Atlas",
-        "features": {
-            "audio_classification": True,
-            "time_series_forecasting": True,
-            "rl_recommendations": True,
-            "cloud_storage": True
+    try:
+        return {
+            "status": "healthy",
+            "service": "AsaliAsPossible API",
+            "version": "1.0.0"
         }
-    }
+    except Exception as e:
+        print(f"Health check error: {e}")
+        return {"status": "error", "message": str(e)}
