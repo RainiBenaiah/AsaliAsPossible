@@ -6,7 +6,7 @@ from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
 from fastapi.openapi.models import OAuthFlowPassword
 from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
-#from config.settings import settings
+from config.settings import settings
 from database.connection import connect_to_mongo, close_mongo_connection, init_indexes 
 #from routes import auth, dashboard, hives, analytics, recommendations, harvests
 #from routes import settings as settings_route
