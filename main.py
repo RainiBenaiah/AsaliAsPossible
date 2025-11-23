@@ -118,13 +118,13 @@ app.add_middleware(
 )
 
 # Include routers
-#app.include_router(auth.router, prefix=settings.API_V1_STR)
-#app.include_router(dashboard.router, prefix=settings.API_V1_STR)
-#app.include_router(hives.router, prefix=settings.API_V1_STR)
-#app.include_router(analytics.router, prefix=settings.API_V1_STR)
-#app.include_router(recommendations.router, prefix=settings.API_V1_STR)
-#app.include_router(harvests.router, prefix=settings.API_V1_STR)
-#app.include_router(settings_route.router, prefix=settings.API_V1_STR)
+app.include_router(auth.router, prefix=settings.API_V1_STR)
+app.include_router(dashboard.router, prefix=settings.API_V1_STR)
+app.include_router(hives.router, prefix=settings.API_V1_STR)
+app.include_router(analytics.router, prefix=settings.API_V1_STR)
+app.include_router(recommendations.router, prefix=settings.API_V1_STR)
+app.include_router(harvests.router, prefix=settings.API_V1_STR)
+app.include_router(settings_route.router, prefix=settings.API_V1_STR)
 
 # Root endpoint
 @app.get("/")
