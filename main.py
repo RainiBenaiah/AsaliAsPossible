@@ -169,6 +169,7 @@ app.add_middleware(
 
 # Root endpoint
 @app.get("/")
+@app.head("/")  # Add HEAD support for health checks
 async def root():
     try:
         return {
@@ -184,6 +185,7 @@ async def root():
 
 # Health check endpoint
 @app.get("/api/health")
+@app.head("/api/health")  # Add HEAD support
 async def health_check():
     try:
         return {
