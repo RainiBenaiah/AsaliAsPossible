@@ -1,3 +1,8 @@
+
+# Set matplotlib backend BEFORE any other imports
+import os
+os.environ['MPLBACKEND'] = 'Agg'  # Non-interactive backend (speeds up startup)
+
 import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,67 +16,92 @@ from database.connection import connect_to_mongo, close_mongo_connection, init_i
 from routes import auth, dashboard, hives, analytics, recommendations, harvests
 from routes import settings as settings_route
 
+# ❌ REMOVED heavy imports - these slow down startup:
+# from services.audio_service import get_audio_service
+# from services.forecasting_service import get_forecasting_service
+# from services.rl_service import get_rl_service
 
 async def load_models_async():
-    """Load ML models in background after server starts"""
-    await asyncio.sleep(2)  # Let server start first
+    """Load ML models in background AFTER server starts and binds to port"""
+    await asyncio.sleep(5)  # Give server time to fully bind to port
     
-    print("\n Loading ML Models...")
-
-    # Import services ONLY when needed
-    from services.audio_service import get_audio_service
-    from services.forecasting_service import get_forecasting_service
-    from services.rl_service import get_rl_service
+    print("\n" + "=" * 60)
+    print("🤖 Loading ML Models in Background...")
+    print("=" * 60)
     
+    # Import services ONLY when loading (not at startup)
     try:
+        from services.audio_service import get_audio_service
         get_audio_service()
-        print(" Audio model loaded")
+        print("✅ Audio model (CNN-LSTM) loaded")
     except Exception as e:
-        print(f" Audio: {e}")
+        print(f"❌ Audio model failed: {e}")
     
     try:
+        from services.forecasting_service import get_forecasting_service
         get_forecasting_service()
-        print(" LSTM model loaded")
+        print("✅ LSTM forecasting model loaded")
     except Exception as e:
-        print(f" LSTM: {e}")
+        print(f"❌ LSTM model failed: {e}")
     
     try:
+        from services.rl_service import get_rl_service
         get_rl_service()
-        print(" PPO model loaded")
+        print("✅ PPO reinforcement learning model loaded")
     except Exception as e:
-        print(f" PPO: {e}")
+        print(f"❌ PPO model failed: {e}")
+    
+    print("=" * 60)
+    print("🎉 All ML models loaded!")
+    print("=" * 60 + "\n")
 
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("=" * 60)
-    print(" AsaliAsPossible API Starting...")
+    print("🐝 AsaliAsPossible API Starting...")
     print("=" * 60)
     
-    # Connect to database
-    await connect_to_mongo()
-    
-    # Initialize database indexes
+    # Connect to database with timeout (don't block startup)
     try:
-        print("\n Initializing database indexes...")
-        await init_indexes()
-        print(" Database indexes created")
+        print("🔌 Connecting to MongoDB...")
+        await asyncio.wait_for(connect_to_mongo(), timeout=10.0)
+        print("✅ MongoDB connected")
+    except asyncio.TimeoutError:
+        print("⚠️  MongoDB connection timeout - API will continue without DB")
     except Exception as e:
-        print(f"⚠ Index warning: {e}")
+        print(f"⚠️  MongoDB error: {e} - API will continue without DB")
     
-    print("\n API Ready - ML models loading in background...")
+    # Initialize database indexes with timeout
+    try:
+        print("📊 Initializing database indexes...")
+        await asyncio.wait_for(init_indexes(), timeout=5.0)
+        print("✅ Database indexes created")
+    except asyncio.TimeoutError:
+        print("⚠️  Index creation timeout - skipping")
+    except Exception as e:
+        print(f"⚠️  Index warning: {e}")
     
-    # Load models in background AFTER server starts
+    print("\n" + "=" * 60)
+    print("✅ API Server Ready and Listening!")
+    print("🔄 ML models loading in background...")
+    print("=" * 60 + "\n")
+    
+    # Load models in background AFTER server is fully up
     asyncio.create_task(load_models_async())
     
     yield
     
     # Shutdown
     print("\n" + "=" * 60)
-    print("  Shutting down AsaliAsPossible API...")
-    await close_mongo_connection()
-    print("  AsaliAsPossible API Stopped")
+    print("🛑 Shutting down AsaliAsPossible API...")
+    try:
+        await close_mongo_connection()
+        print("✅ MongoDB disconnected")
+    except Exception as e:
+        print(f"⚠️  Shutdown warning: {e}")
+    print("✅ AsaliAsPossible API Stopped")
     print("=" * 60 + "\n")
 
 # Create FastAPI app
@@ -130,8 +160,9 @@ app.include_router(settings_route.router, prefix=settings.API_V1_STR)
 @app.get("/")
 async def root():
     return {
-        "message": "Welcome to AsaliAsPossible API ",
+        "message": "Welcome to AsaliAsPossible API 🐝",
         "version": "1.0.0",
+        "status": "running",
         "docs": "/docs",
         "health": "/api/health",
         "ml_models": {
@@ -167,5 +198,3 @@ async def health_check():
             "cloud_storage": True
         }
     }
-
-# Run with: uvicorn main:app --host 0.0.0.0 --port $PORT
