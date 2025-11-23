@@ -12,7 +12,7 @@ try:
     from config.settings import settings
     SETTINGS_LOADED = True
 except Exception as e:
-    print(f"⚠️ Settings import failed: {e}")
+    print(f" Settings import failed: {e}")
     SETTINGS_LOADED = False
     # Create minimal settings fallback
     class FallbackSettings:
@@ -36,44 +36,44 @@ async def lifespan(app: FastAPI):
         print("🔌 Connecting to MongoDB...")
         await asyncio.wait_for(connect_to_mongo(), timeout=10.0)
         db_connected = True
-        print("✅ MongoDB connected")
+        print(" MongoDB connected")
         
         # Try indexes with separate timeout
         try:
             await asyncio.wait_for(init_indexes(), timeout=5.0)
-            print("✅ Indexes created")
+            print(" Indexes created")
         except Exception as e:
-            print(f"⚠️ Indexes skipped: {e}")
+            print(f" Indexes skipped: {e}")
     except Exception as e:
-        print(f"⚠️ MongoDB skipped: {e}")
+        print(f" MongoDB skipped: {e}")
     
-    print("✅ API Ready!")
+    print(" API Ready!")
     
     # Load ML models in background (fire and forget)
     async def load_models():
         await asyncio.sleep(10)  # Wait longer before loading
-        print("\n🤖 Loading ML models...")
+        print("\n Loading ML models...")
         
         try:
             from services.audio_service import get_audio_service
             get_audio_service()
-            print("✅ Audio model loaded")
+            print(" Audio model loaded")
         except Exception as e:
-            print(f"❌ Audio: {e}")
+            print(f" Audio: {e}")
         
         try:
             from services.forecasting_service import get_forecasting_service
             get_forecasting_service()
-            print("✅ LSTM loaded")
+            print(" LSTM loaded")
         except Exception as e:
-            print(f"❌ LSTM: {e}")
+            print(f" LSTM: {e}")
         
         try:
             from services.rl_service import get_rl_service
             get_rl_service()
-            print("✅ PPO loaded")
+            print(" PPO loaded")
         except Exception as e:
-            print(f"❌ PPO: {e}")
+            print(f" PPO: {e}")
     
     # Start model loading task (don't await it)
     asyncio.create_task(load_models())
@@ -81,7 +81,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    print("\n🛑 Shutting down...")
+    print("\n Shutting down...")
     if db_connected:
         try:
             from database.connection import close_mongo_connection
@@ -128,7 +128,7 @@ async def health():
         "version": "1.0.0"
     }
 
-# Try to include routers (non-blocking)
+# Include routers - Now safe with lazy imports in hives.py
 try:
     from routes import auth, dashboard, hives, analytics, recommendations, harvests
     from routes import settings as settings_route
@@ -143,7 +143,7 @@ try:
     app.include_router(harvests.router, prefix=api_prefix)
     app.include_router(settings_route.router, prefix=api_prefix)
     
-    print("✅ All routes loaded")
+    print(" All routes loaded")
 except Exception as e:
-    print(f"⚠️ Routes not loaded: {e}")
+    print(f" Routes not loaded: {e}")
     print("   API will run with basic endpoints only")
