@@ -49,34 +49,12 @@ async def lifespan(app: FastAPI):
     
     print(" API Ready!")
     
-    # Load ML models in background (fire and forget)
-    async def load_models():
-        await asyncio.sleep(10)  # Wait longer before loading
-        print("\n Loading ML models...")
-        
-        try:
-            from services.audio_service import get_audio_service
-            get_audio_service()
-            print(" Audio model loaded")
-        except Exception as e:
-            print(f" Audio: {e}")
-        
-        try:
-            from services.forecasting_service import get_forecasting_service
-            get_forecasting_service()
-            print(" LSTM loaded")
-        except Exception as e:
-            print(f" LSTM: {e}")
-        
-        try:
-            from services.rl_service import get_rl_service
-            get_rl_service()
-            print(" PPO loaded")
-        except Exception as e:
-            print(f" PPO: {e}")
+    #  DISABLED: Background model loading
+    # Models will load on-demand when ML endpoints are called
+    # This prevents timeout during server startup on Render
     
-    # Start model loading task (don't await it)
-    asyncio.create_task(load_models())
+    print("  ML models will load on-demand when needed")
+    print("=" * 60)
     
     yield
     
