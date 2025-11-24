@@ -1,8 +1,16 @@
-# Set matplotlib backend BEFORE any other imports
+# ============================================================
+# ENVIRONMENT SETUP - MUST BE FIRST!
+# ============================================================
 import os
+
+#  Force CPU-only mode (silences CUDA errors on Render)
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
+#  Set matplotlib backend to non-interactive (required for server)
 os.environ['MPLBACKEND'] = 'Agg'
 
 import asyncio
+import threading
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -20,6 +28,58 @@ except Exception as e:
         API_V1_STR = "/api"
         BACKEND_CORS_ORIGINS = []
     settings = FallbackSettings()
+
+
+# ============================================================
+# BACKGROUND MODEL LOADING (After Server Starts)
+# ============================================================
+def load_models_in_background():
+    """
+    Pre-load ML models in background thread after server starts.
+    This makes first API calls faster while not delaying startup.
+    """
+    import time
+    time.sleep(5)  # Wait 5 seconds after server starts
+    
+    try:
+        print("\n" + "=" * 60)
+        print(" BACKGROUND MODEL LOADING STARTED")
+        print("=" * 60)
+        
+        # Load Audio Service (CNN-LSTM)
+        try:
+            print(" Loading Audio Classification Model (CNN-LSTM)...")
+            from services.audio_service import get_audio_service
+            audio_service = get_audio_service()
+            print(" Audio model loaded and cached")
+        except Exception as e:
+            print(f" Audio model loading failed: {e}")
+        
+        # Load Forecasting Service (LSTM)
+        try:
+            print(" Loading Forecasting Model (LSTM)...")
+            from services.forecasting_service import get_forecasting_service
+            forecasting_service = get_forecasting_service()
+            print(" Forecasting model loaded and cached")
+        except Exception as e:
+            print(f" Forecasting model loading failed: {e}")
+        
+        # Load RL Service (PPO)
+        try:
+            print(" Loading Reinforcement Learning Model (PPO)...")
+            from services.rl_service import get_rl_service
+            rl_service = get_rl_service()
+            print(" RL model loaded and cached")
+        except Exception as e:
+            print(f" RL model loading failed: {e}")
+        
+        print("=" * 60)
+        print("🎉 ALL MODELS LOADED - First API calls will be FAST!")
+        print("=" * 60 + "\n")
+        
+    except Exception as e:
+        print(f" Background model loading error: {e}")
+
 
 # Lifespan with isolated error handling
 @asynccontextmanager
@@ -48,13 +108,15 @@ async def lifespan(app: FastAPI):
         print(f" MongoDB skipped: {e}")
     
     print(" API Ready!")
-    
-    #  DISABLED: Background model loading
-    # Models will load on-demand when ML endpoints are called
-    # This prevents timeout during server startup on Render
-    
-    print("  ML models will load on-demand when needed")
+    print(" Starting background model loading (won't delay requests)...")
     print("=" * 60)
+    
+    #  Start background model loading (non-blocking!)
+    model_loading_thread = threading.Thread(
+        target=load_models_in_background,
+        daemon=True  # Thread dies when main process exits
+    )
+    model_loading_thread.start()
     
     yield
     
