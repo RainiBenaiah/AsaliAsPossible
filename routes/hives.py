@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Body
 from typing import List, Optional
 from utils.auth_utils import get_current_user_email
 from services.hive_service import HiveService
-from services.audio_service import get_audio_service
-from services.forecasting_service import get_forecasting_service
-from services.rl_service import get_rl_service
+#  REMOVED - These load TensorFlow at import time!
+# from services.audio_service import get_audio_service
+# from services.forecasting_service import get_forecasting_service
+# from services.rl_service import get_rl_service
 # NEW: Import storage services
 from services.audio_storage_service import save_audio_to_database, get_audio_history
 from services.forecast_storage_service import save_forecast_to_database, get_latest_forecast
@@ -20,6 +21,7 @@ from bson import ObjectId
 from datetime import datetime, timedelta
 import aiofiles
 import os
+import base64  # ✅ For base64 audio upload
 from pathlib import Path
 import numpy as np
 import traceback
@@ -194,15 +196,38 @@ async def upload_audio(
     Upload audio file for classification and save to MongoDB Atlas
     
     This endpoint:
-    1. Validates the audio file
+    1. Validates the audio file (max 20MB)
     2. Classifies it using CNN-LSTM model
     3. Saves file to GridFS
     4. Saves metadata and classification to MongoDB
+    
+    Note: Large files may take 1-3 minutes to process
     """
+    # ✅ LAZY IMPORT - Only load when this endpoint is called
+    from services.audio_service import get_audio_service
+    
     hives_collection = get_hives_collection()
     file_path = None
     
+    # ✅ File size limit (20MB)
+    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+    
     try:
+        print(f"📤 Receiving audio upload for hive {hive_id}")
+        
+        # Read file content
+        content = await audio_file.read()
+        file_size = len(content)
+        
+        print(f"📊 File size: {file_size / 1024 / 1024:.2f} MB")
+        
+        # Check file size
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large ({file_size / 1024 / 1024:.1f}MB). Maximum size is 20MB. Please use a shorter audio clip."
+            )
+        
         # Verify hive exists
         hive = await hives_collection.find_one({
             "_id": ObjectId(hive_id),
@@ -222,16 +247,14 @@ async def upload_audio(
                 detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
             )
         
-        # Save file temporarily
+        # Save file temporarily (write the content we already read)
         timestamp = datetime.utcnow().timestamp()
         safe_filename = f"{hive_id}_{timestamp}{file_ext}"
         file_path = UPLOAD_DIR / safe_filename
         
+        print(f"💾 Saving temporary file: {file_path}")
         async with aiofiles.open(file_path, 'wb') as f:
-            content = await audio_file.read()
-            await f.write(content)
-        
-        file_size = file_path.stat().st_size
+            await f.write(content)  # ✅ Use content we already read
         
         # Get audio info
         try:
@@ -243,6 +266,7 @@ async def upload_audio(
                 "content_type": audio_file.content_type or "audio/wav",
                 "notes": notes
             }
+            print(f"🎵 Audio info: {audio_info_sf.duration:.1f}s @ {audio_info_sf.samplerate}Hz")
         except:
             # Fallback if soundfile can't read the file
             audio_info = {
@@ -252,8 +276,10 @@ async def upload_audio(
                 "content_type": audio_file.content_type or "audio/wav",
                 "notes": notes
             }
+            print(f"⚠️ Could not read audio metadata, using defaults")
         
         # Validate audio with audio service
+        print(f"🔍 Validating audio file...")
         audio_service = get_audio_service()
         is_valid, message = audio_service.validate_audio_file(str(file_path))
         
@@ -263,12 +289,13 @@ async def upload_audio(
             raise HTTPException(status_code=400, detail=message)
         
         # Classify audio with CNN-LSTM model
-        print(f"🎵 Classifying audio for hive {hive_id}...")
+        print(f"🤖 Classifying audio for hive {hive_id}...")
+        print(f"⏱️  This may take 1-3 minutes for first classification (model loading)...")
         classification_result = audio_service.classify_audio(str(file_path))
-        print(f"   Classification: {classification_result['status']} ({classification_result['confidence']}%)")
+        print(f"✅ Classification: {classification_result['status']} ({classification_result['confidence']}% confidence)")
         
         # NEW: Save to MongoDB Atlas (GridFS + metadata)
-        print(f" Saving audio to MongoDB Atlas...")
+        print(f"💾 Saving audio to MongoDB Atlas...")
         audio_doc_id = await save_audio_to_database(
             file_path=str(file_path),
             hive_id=hive_id,
@@ -276,7 +303,7 @@ async def upload_audio(
             classification_result=classification_result,
             audio_info=audio_info
         )
-        print(f"   ✓ Saved to MongoDB: {audio_doc_id}")
+        print(f"✅ Saved to MongoDB: {audio_doc_id}")
         
         # Update hive with latest classification
         await hives_collection.update_one(
@@ -293,7 +320,9 @@ async def upload_audio(
         # Clean up temporary file (audio is now in GridFS)
         if file_path.exists():
             os.remove(file_path)
-            print(f"   ✓ Temporary file cleaned up")
+            print(f"🧹 Temporary file cleaned up")
+        
+        print(f"🎉 Audio upload & classification complete!")
         
         return {
             "success": True,
@@ -303,21 +332,220 @@ async def upload_audio(
             "file_info": {
                 "filename": audio_file.filename,
                 "size_bytes": file_size,
+                "size_mb": round(file_size / 1024 / 1024, 2),
                 "duration": audio_info["duration"]
             },
             "storage": {
                 "location": "MongoDB Atlas GridFS",
                 "metadata_collection": "audio_metadata"
-            }
+            },
+            "next_steps": "You can now run complete analysis to get LSTM forecasts and PPO recommendations"
         }
         
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Audio upload failed: {e}")
         traceback.print_exc()
         if file_path and file_path.exists():
             os.remove(file_path)
-        raise HTTPException(status_code=500, detail=str(e))
+        
+        # Provide helpful error message
+        error_msg = str(e)
+        if "timeout" in error_msg.lower():
+            error_msg = "Processing timeout. File may be too large. Try a shorter audio clip (< 30 seconds)."
+        elif "memory" in error_msg.lower():
+            error_msg = "Server memory error. Try a smaller file or try again later."
+        
+        raise HTTPException(status_code=500, detail=error_msg)
+
+@router.post("/{hive_id}/upload-audio-base64")
+async def upload_audio_base64(
+    hive_id: str,
+    audio_data: dict = Body(...),
+    current_user_email: str = Depends(get_current_user_email)
+):
+    """
+    Upload audio using base64 encoding (Flutter Web compatible)
+    
+    This endpoint accepts audio as base64 string instead of multipart/form-data.
+    Works reliably on Flutter Web where multipart uploads can fail.
+    
+    Body should contain:
+    {
+        "filename": "audio.wav",
+        "content": "base64_encoded_audio_data",
+        "notes": ""
+    }
+    """
+    # ✅ Lazy import
+    from services.audio_service import get_audio_service
+    import base64
+    
+    hives_collection = get_hives_collection()
+    file_path = None
+    
+    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+    
+    try:
+        print(f"=" * 60)
+        print(f"📤 BASE64 AUDIO UPLOAD for hive {hive_id}")
+        print(f"=" * 60)
+        
+        # Extract data from request body
+        filename = audio_data.get('filename', 'audio.wav')
+        base64_content = audio_data.get('content', '')
+        notes = audio_data.get('notes', '')
+        
+        print(f"📄 Filename: {filename}")
+        print(f"📏 Base64 length: {len(base64_content)} characters")
+        
+        # Decode base64 to bytes
+        try:
+            file_bytes = base64.b64decode(base64_content)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid base64 encoding: {e}")
+        
+        file_size = len(file_bytes)
+        print(f"📊 Decoded file size: {file_size / 1024 / 1024:.2f} MB")
+        
+        # Check file size
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large ({file_size / 1024 / 1024:.1f}MB). Maximum is 20MB."
+            )
+        
+        # Verify hive exists
+        hive = await hives_collection.find_one({
+            "_id": ObjectId(hive_id),
+            "user_id": current_user_email
+        })
+        
+        if not hive:
+            raise HTTPException(status_code=404, detail="Hive not found")
+        
+        # Validate file extension
+        allowed_extensions = ['.wav', '.mp3', '.flac']
+        file_ext = Path(filename).suffix.lower()
+        
+        if file_ext not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
+            )
+        
+        # Save to temporary file
+        timestamp = datetime.utcnow().timestamp()
+        safe_filename = f"{hive_id}_{timestamp}{file_ext}"
+        file_path = UPLOAD_DIR / safe_filename
+        
+        print(f"💾 Saving to temporary file: {file_path}")
+        async with aiofiles.open(file_path, 'wb') as f:
+            await f.write(file_bytes)
+        
+        # Get audio info
+        try:
+            audio_info_sf = sf.info(str(file_path))
+            audio_info = {
+                "duration": audio_info_sf.duration,
+                "sample_rate": audio_info_sf.samplerate,
+                "file_size": file_size,
+                "content_type": "audio/wav",
+                "notes": notes
+            }
+            print(f"🎵 Audio: {audio_info_sf.duration:.1f}s @ {audio_info_sf.samplerate}Hz")
+        except:
+            audio_info = {
+                "duration": 10.0,
+                "sample_rate": 22050,
+                "file_size": file_size,
+                "content_type": "audio/wav",
+                "notes": notes
+            }
+            print(f"⚠️ Could not read audio metadata, using defaults")
+        
+        # Validate and classify with audio service
+        print(f"🔍 Loading audio service...")
+        audio_service = get_audio_service()
+        
+        print(f"🔍 Validating audio...")
+        is_valid, message = audio_service.validate_audio_file(str(file_path))
+        
+        if not is_valid:
+            if file_path.exists():
+                os.remove(file_path)
+            raise HTTPException(status_code=400, detail=message)
+        
+        print(f"🤖 Classifying audio with CNN-LSTM model...")
+        print(f"⏱️  This may take 1-3 minutes for first classification...")
+        classification_result = audio_service.classify_audio(str(file_path))
+        print(f"✅ Classification: {classification_result['status']} ({classification_result['confidence']}%)")
+        
+        # Save to MongoDB Atlas
+        print(f"💾 Saving to MongoDB Atlas...")
+        audio_doc_id = await save_audio_to_database(
+            file_path=str(file_path),
+            hive_id=hive_id,
+            user_id=current_user_email,
+            classification_result=classification_result,
+            audio_info=audio_info
+        )
+        print(f"✅ Saved to MongoDB: {audio_doc_id}")
+        
+        # Update hive
+        await hives_collection.update_one(
+            {"_id": ObjectId(hive_id)},
+            {
+                "$set": {
+                    "audio_classification": classification_result,
+                    "audio_updated_at": datetime.utcnow(),
+                    "audio_doc_id": audio_doc_id
+                }
+            }
+        )
+        
+        # Cleanup
+        if file_path.exists():
+            os.remove(file_path)
+            print(f"🧹 Temporary file cleaned up")
+        
+        print(f"🎉 Base64 audio upload complete!")
+        print(f"=" * 60)
+        
+        return {
+            "success": True,
+            "message": "Audio classified successfully via base64 upload",
+            "classification": classification_result,
+            "audio_doc_id": audio_doc_id,
+            "file_info": {
+                "filename": filename,
+                "size_bytes": file_size,
+                "size_mb": round(file_size / 1024 / 1024, 2),
+                "duration": audio_info["duration"]
+            },
+            "storage": {
+                "location": "MongoDB Atlas GridFS",
+                "metadata_collection": "audio_metadata"
+            },
+            "upload_method": "base64"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Base64 upload failed: {e}")
+        traceback.print_exc()
+        if file_path and file_path.exists():
+            os.remove(file_path)
+        
+        error_msg = str(e)
+        if "timeout" in error_msg.lower():
+            error_msg = "Processing timeout. Try a shorter audio clip."
+        elif "memory" in error_msg.lower():
+            error_msg = "Server memory error. Try a smaller file."
+        
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @router.get("/{hive_id}/audio-history")
 async def get_audio_classification_history(
@@ -352,6 +580,10 @@ async def analyze_hive_complete(
     3. Runs PPO RL for recommendations
     4. Saves all results to MongoDB Atlas
     """
+    # ✅ LAZY IMPORTS - Only load when this endpoint is called
+    from services.forecasting_service import get_forecasting_service
+    from services.rl_service import get_rl_service
+    
     hives_collection = get_hives_collection()
     history_collection = get_hive_history_collection()
     recommendations_collection = get_recommendations_collection()
@@ -366,7 +598,7 @@ async def analyze_hive_complete(
         if not hive:
             raise HTTPException(status_code=404, detail="Hive not found")
         
-        print(f"\n Analyzing hive: {hive['name']}")
+        print(f"\n🔍 Analyzing hive: {hive['name']}")
         
         # Get historical data (last 24 hours)
         cursor = history_collection.find({
@@ -409,14 +641,14 @@ async def analyze_hive_complete(
         })
         
         # Run LSTM forecasting
-        print(f" Running LSTM forecasting...")
+        print(f"🔮 Running LSTM forecasting...")
         forecasting_service = get_forecasting_service()
         forecast_data = forecasting_service.predict_future(historical_data)
         print(f"   Temperature trend: {forecast_data['trends']['temperature']}")
         print(f"   Humidity trend: {forecast_data['trends']['humidity']}")
         
         # NEW: Save forecast to MongoDB Atlas
-        print(f" Saving forecast to MongoDB Atlas...")
+        print(f"💾 Saving forecast to MongoDB Atlas...")
         
         # Build predictions with timestamps
         now = datetime.utcnow()
@@ -481,7 +713,7 @@ async def analyze_hive_complete(
         }
         
         # Run PPO RL for recommendation
-        print(f" Running PPO RL model...")
+        print(f"🤖 Running PPO RL model...")
         rl_service = get_rl_service()
         recommendation = rl_service.get_recommendation(
             current_sensors,
@@ -491,8 +723,8 @@ async def analyze_hive_complete(
         )
         print(f"   Action: {recommendation['action']} (Priority: {recommendation['priority']})")
         
-        #  Create RL episode and save step to MongoDB Atlas
-        print(f" Saving RL data to MongoDB Atlas...")
+        # 💾 Create RL episode and save step to MongoDB Atlas
+        print(f"💾 Saving RL data to MongoDB Atlas...")
         episode_id = await create_rl_episode(hive_id, current_user_email)
         
         # Build state for RL
@@ -529,7 +761,7 @@ async def analyze_hive_complete(
             action_log_prob=None,
             advantage=None
         )
-        print(f"    Saved RL episode: {episode_id}")
+        print(f"   ✓ Saved RL episode: {episode_id}")
         
         recommendations = [recommendation]
         
@@ -562,7 +794,7 @@ async def analyze_hive_complete(
             }
         )
         
-        print(f" Analysis complete!\n")
+        print(f"✅ Analysis complete!\n")
         
         return {
             "success": True,
@@ -656,7 +888,7 @@ async def generate_demo_data(
     )
     
     # Run analysis
-    print(f" Generated demo data, running analysis...")
+    print(f"📊 Generated demo data, running analysis...")
     analysis_result = await analyze_hive_complete(hive_id, current_user_email)
     
     return {
